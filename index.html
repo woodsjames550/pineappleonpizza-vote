@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PulseCheck 2026 | Pineapple on Pizza?</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; padding-top: 50px; background: #f0f2f5; }
+        .card { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; width: 400px; }
+        .button-group { margin: 20px 0; display: flex; justify-content: center; gap: 10px; }
+        button { padding: 10px 15px; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold; }
+        .btn-yes    { background: #4ade80; }
+        .btn-no     { background: #f87171; }
+        .btn-maybe  { background: #fbbf24; }
+        #status { font-size: 0.8rem; color: #888; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🍍 Pineapple on pizza?</h1>
+        
+        <div class="button-group">
+            <button class="btn-yes"   onclick="castVote('Yes')">🍍 Yes</button>
+            <button class="btn-no"    onclick="castVote('No')">🚫 No</button>
+            <button class="btn-maybe" onclick="castVote('Maybe')">🤷 Maybe</button>
+        </div>
+        <canvas id="voteChart"></canvas>
+        <div id="status">Connecting to database...</div>
+    </div>
+    <script>
+        // REPLACE THESE with your actual keys from Supabase
+        const SUPABASE_URL = 'https://wvfybunveupcfwpdxvjx.supabase.co/rest/v1/';
+        const SUPABASE_ANON_KEY = 	'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2ZnlidW52ZXVwY2Z3cGR4dmp4Iiwicm9sZSI6ImFub24iLCJpYXQiO	jE3Nzc3ODQwNjMsImV4cCI6MjA5MzM2MDA2M30.WfjKA2f_-RwMF24J7PpFdPZojOBvWfX7rTUO3lfwy-s';
+        
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        let myChart;
+        const voteCounts = { 'Yes': 0, 'No': 0, 'Maybe': 0 };
+
+        // Function: Initialize the Chart
+        function initChart() {
+            const ctx = document.getElementById('voteChart').getContext('2d');
+            myChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Yes', 'No', 'Maybe'],
+                    datasets: [{
+                        label: 'Votes',
+                        data: [0, 0, 0],
+                        backgroundColor: ['#4ade80', '#f87171', '#fbbf24']
+                    }]
+                },
+                options: { scales: { y: { beginAtZero: true } } }
+            });
+        }
+
+        // Function: Send a vote to Supabase
+        async function castVote(choice) {
+            const { error } = await supabaseClient
+                .from('votes')
+                .insert([{ choice: choice }]);
+            
+            if (error) console.error(error);
+            else document.getElementById('status').innerText = "Vote counted!";
+        }
+
+        // Function: Load data and listen for live updates
+        async function setup() {
+            initChart();
+
+            // 1. Get initial totals
+            const { data } = await supabaseClient.from('votes').select('choice');
+            data.forEach(v => voteCounts[v.choice]++);
+            updateChart();
+
+            // 2. Listen for "Realtime" changes
+            supabaseClient
+                .channel('live-votes')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, payload => {
+                    voteCounts[payload.new.choice]++;
+                    updateChart();
+                })
+                .subscribe();
+            
+            document.getElementById('status').innerText = "Live and connected!";
+        }
+
+        function updateChart() {
+            myChart.data.datasets[0].data = [voteCounts['Yes'], voteCounts['No'], voteCounts['Maybe']];
+            myChart.update();
+        }
+
+        setup();
+    </script>
+</body>
+</html>
